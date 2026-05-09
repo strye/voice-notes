@@ -1,0 +1,27 @@
+# VoiceNotes configuration
+# Copy to ~/.config/voicenotes/config.toml and uncomment the lines you want to change.
+# All fields are optional — defaults are shown below.
+
+# Whisper model to use for transcription.
+# Larger models are more accurate but slower and use more disk space.
+#   tiny   —  75 MB, fastest, lower accuracy
+#   base   — 150 MB, fast, good accuracy (default)
+#   small  — 466 MB, moderate speed, better accuracy
+#   medium — 1.5 GB, slow, best accuracy
+# model = "base"
+
+# Global hotkey to start and stop recording.
+# Format: modifier+key  (e.g. ctrl+space, cmd+shift+r, ctrl+alt+r)
+# hotkey = "ctrl+space"
+
+# Directory where transcription files are saved.
+# Supports ~ for your home directory. Created automatically if it doesn't exist.
+# output_dir = "~/VoiceNotes"
+
+# Language of your recordings. Use a BCP-47 language code.
+# Setting this improves accuracy. Leave as "en" for English.
+#   en — English
+#   fr — French
+#   es — Spanish
+#   de — German
+# language = "en"
