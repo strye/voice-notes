@@ -16,5 +16,8 @@ build/
 .coverage
 htmlcov/
 
+# dev artifacts
+Kel/
+
 # macOS
 .DS_Store
