@@ -4,7 +4,7 @@ A local-first, privacy-preserving voice-to-markdown tool for writers. Capture lo
 
 Built in Python using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) for on-device transcription with built-in voice activity detection.
 
-> **Inspired by [SecureVoice](https://github.com/chradavi/SecureVoice)** — a Rust macOS menu bar app for private speech-to-text. VoiceNotes takes the same privacy-first philosophy and extends it for long-form writing workflows with streaming transcription and structured Markdown output.
+> **Inspired by [SecureVoice](https://github.com/chradavi/SecureVoice)** by David Christian — a Rust macOS menu bar app for private speech-to-text. VoiceNotes takes the same privacy-first philosophy and extends it for long-form writing workflows with streaming transcription and structured Markdown output.
 
 ---
 
