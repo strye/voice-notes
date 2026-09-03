@@ -10,7 +10,7 @@ Built in Python using [faster-whisper](https://github.com/SYSTRAN/faster-whisper
 
 ## What it does
 
-VoiceNotes writes your spoken words directly to a Markdown file as you speak — sentence by sentence — or transcribes a pre-recorded `.wav` or `.mp3` file in one pass. Each session produces a structured file with YAML frontmatter (date, model, duration, word count) ready for editing and publishing.
+VoiceNotes writes your spoken words directly to a Markdown file as you speak — sentence by sentence — or transcribes a pre-recorded `.wav`, `.mp3`, or `.m4a` file in one pass. Each session produces a structured file with YAML frontmatter (date, model, duration, word count) ready for editing and publishing.
 
 **Two modes:**
 
@@ -38,7 +38,7 @@ Ideas flow through my mind like water...
 
 ## Install
 
-**Requirements:** Python 3.9+, ffmpeg (for MP3 support)
+**Requirements:** Python 3.9+, ffmpeg (for MP3 and M4A support)
 
 ```bash
 # Install ffmpeg (macOS)
@@ -67,7 +67,17 @@ Press the hotkey to start recording. Press it again to stop — the transcript i
 ```bash
 voicenotes --file recording.wav
 voicenotes --file interview.mp3
+voicenotes --file memo.m4a
 ```
+
+**Speaker labels** (file transcription only):
+
+```bash
+voicenotes --file interview.mp3 --diarize
+voicenotes --file panel.m4a --num-speakers 3
+```
+
+With `--diarize`, each change of speaker starts a new paragraph prefixed with `**Speaker 1:**`, `**Speaker 2:**`, and so on, and the frontmatter gains a `speakers` count. Labels are anonymous and numbered by first appearance. `--num-speakers N` implies `--diarize` and improves accuracy when you know how many people were talking. Diarization is not available during live capture.
 
 ## Configuration
 
@@ -78,6 +88,8 @@ model = "base"          # tiny | base | small | medium
 hotkey = "ctrl+space"
 output_dir = "~/VoiceNotes"
 language = "en"
+diarize = false         # label speakers in --file transcripts
+# num_speakers = 2      # optional hint; auto-detected when unset
 ```
 
 ## Models
@@ -90,6 +102,15 @@ language = "en"
 | medium | 1.5 GB | High accuracy, slower |
 
 Models are downloaded once from [huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) and cached locally.
+
+**Speaker diarization models** (downloaded on first `--diarize` run, no account required):
+
+| Model | Size | Role |
+|-------|------|------|
+| pyannote segmentation-3.0 | 6 MB | Detects speech and speaker-change points |
+| NVIDIA TitaNet-small | 38 MB | Speaker embeddings for clustering |
+
+Both run on CPU via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) and are cached in `~/.cache/voicenotes/diarization/`.
 
 ## Project layout
 
@@ -104,7 +125,8 @@ src/
   capture.py      — microphone capture (sounddevice)
   session.py      — live capture session
   file_input.py   — audio file validation, decoding, and file session
-tests/            — pytest suite (122 tests)
+  diarize.py      — speaker diarization (sherpa-onnx) and word-to-speaker alignment
+tests/            — pytest suite
 .docs/            — specs and planning docs
 ```
 

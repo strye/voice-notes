@@ -24,6 +24,7 @@ class SessionMeta:
     model: str
     duration: timedelta = field(default_factory=timedelta)
     word_count: int = 0
+    speakers: int | None = None
 
 
 class OutputWriter:
@@ -34,6 +35,7 @@ class OutputWriter:
         self._word_count = 0
         self._first_words: str | None = None
         self._title: str | None = None
+        self._last_speaker: int | None = None
 
     @property
     def first_words(self) -> str | None:
@@ -42,6 +44,7 @@ class OutputWriter:
     def open(self) -> None:
         """Write the frontmatter stub. Creates parent directories if needed."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        speakers_line = f"speakers: {self._meta.speakers}\n" if self._meta.speakers is not None else ""
         stub = (
             "---\n"
             f"aliases:\n  - {_SENTINEL_TITLE}\n"
@@ -50,6 +53,7 @@ class OutputWriter:
             f"model: {self._meta.model}\n"
             f"duration: \"00:00:00\" {_SENTINEL_DURATION}\n"
             f"word_count: 0 {_SENTINEL_WORD_COUNT}\n"
+            f"{speakers_line}"
             "---\n"
             "\n"
         )
@@ -72,8 +76,17 @@ class OutputWriter:
 
         self._word_count += len(text.split())
 
+        # Determine if we need to write a speaker label
+        output_text = text
+        if segment.speaker is not None and segment.speaker != self._last_speaker:
+            output_text = f"**Speaker {segment.speaker}:** {text}"
+
         with open(self._path, "a", encoding="utf-8") as f:
-            f.write(text + "\n\n")
+            f.write(output_text + "\n\n")
+
+        # Update last_speaker after writing
+        if segment.speaker is not None:
+            self._last_speaker = segment.speaker
 
     def finalize(self, duration: timedelta) -> None:
         """Rewrite frontmatter with final duration, word_count, and title."""

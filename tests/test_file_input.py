@@ -47,7 +47,7 @@ def test_validate_unsupported_extension_lists_formats(tmp_path: Path) -> None:
     with pytest.raises(FileInputError) as exc_info:
         validate_audio_file(bad)
     msg = str(exc_info.value)
-    assert ".wav" in msg and ".mp3" in msg
+    assert ".wav" in msg and ".mp3" in msg and ".m4a" in msg
 
 
 def test_validate_wav_returns_resolved_path(tmp_path: Path) -> None:
@@ -59,6 +59,13 @@ def test_validate_wav_returns_resolved_path(tmp_path: Path) -> None:
 
 def test_validate_mp3_returns_resolved_path(tmp_path: Path) -> None:
     f = tmp_path / "audio.mp3"
+    f.touch()
+    result = validate_audio_file(f)
+    assert result == f.resolve()
+
+
+def test_validate_m4a_returns_resolved_path(tmp_path: Path) -> None:
+    f = tmp_path / "audio.m4a"
     f.touch()
     result = validate_audio_file(f)
     assert result == f.resolve()
@@ -417,3 +424,118 @@ def test_file_session_output_path_no_speech_uses_custom_path(tmp_path: Path) -> 
         FileSession(cfg, mock_t, output_dir, output_path=custom).run(audio)
 
     assert custom.exists()
+
+
+# ---------------------------------------------------------------------------
+# FileSession.run — diarization (Spec 005 AC-1, AC-6, AC-7, AC-8, AC-12)
+# ---------------------------------------------------------------------------
+
+from src.diarize import DiarizationError, SpeakerTurn  # noqa: E402
+from src.transcribe import TranscriptSegment, Word  # noqa: E402
+
+
+def _decoded(seconds: float = 4.0) -> DecodedAudio:
+    return DecodedAudio(
+        samples=np.zeros(int(16_000 * seconds), dtype=np.float32),
+        duration_sec=seconds,
+        created_at=datetime(2026, 9, 2, 12, 0, 0),
+    )
+
+
+def _two_speaker_segments():
+    return [
+        TranscriptSegment(
+            text="Hello there how are you",
+            start_sec=0.0,
+            end_sec=4.0,
+            words=[
+                Word("Hello", 0.0, 0.5),
+                Word("there", 0.5, 1.0),
+                Word("how", 2.0, 2.5),
+                Word("are", 2.5, 3.0),
+                Word("you", 3.0, 3.5),
+            ],
+        ),
+    ]
+
+
+def _run_diarized(tmp_path: Path, diarizer, segments):
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"\x00" * 100)
+    output_dir = tmp_path / "out"
+    transcriber = make_transcriber_mock(segments)
+    with patch("src.file_input.validate_audio_file", return_value=audio), \
+         patch("src.file_input.decode_audio_file", return_value=_decoded()):
+        ok = FileSession(make_config_mock(), transcriber, output_dir, diarizer=diarizer).run(audio)
+    [md] = list(output_dir.glob("*.md"))
+    return ok, md.read_text(encoding="utf-8"), transcriber
+
+
+def test_diarized_session_labels_two_speakers(tmp_path: Path, capsys) -> None:
+    diarizer = MagicMock()
+    diarizer.run.return_value = [SpeakerTurn(0.0, 1.5, 1), SpeakerTurn(1.5, 4.0, 2)]
+
+    ok, content, transcriber = _run_diarized(tmp_path, diarizer, _two_speaker_segments())
+
+    assert ok is True
+    assert "speakers: 2" in content
+    assert "**Speaker 1:** Hello there\n\n**Speaker 2:** how are you\n" in content
+    _, kwargs = transcriber.stream.call_args
+    assert kwargs.get("word_timestamps") is True
+    assert "Identifying speakers" in capsys.readouterr().out
+
+
+def test_diarized_session_progress_callback_prints_percent(tmp_path: Path, capsys) -> None:
+    diarizer = MagicMock()
+
+    def fake_run(samples, progress):
+        progress(50)
+        return [SpeakerTurn(0.0, 1.5, 1), SpeakerTurn(1.5, 4.0, 2)]
+
+    diarizer.run.side_effect = fake_run
+    _run_diarized(tmp_path, diarizer, _two_speaker_segments())
+    assert "Identifying speakers… 50%" in capsys.readouterr().out
+
+
+def test_diarized_session_single_speaker_has_no_labels(tmp_path: Path) -> None:
+    diarizer = MagicMock()
+    diarizer.run.return_value = [SpeakerTurn(0.0, 4.0, 1)]
+
+    ok, content, transcriber = _run_diarized(tmp_path, diarizer, _two_speaker_segments())
+
+    assert ok is True
+    assert "speakers: 1" in content
+    assert "**Speaker" not in content
+    _, kwargs = transcriber.stream.call_args
+    assert kwargs.get("word_timestamps", False) is False
+
+
+def test_diarized_session_no_speech_reports_zero_speakers(tmp_path: Path) -> None:
+    diarizer = MagicMock()
+    diarizer.run.return_value = []
+    ok, content, _ = _run_diarized(tmp_path, diarizer, _two_speaker_segments())
+    assert ok is True
+    assert "speakers: 0" in content
+    assert "**Speaker" not in content
+
+
+def test_diarization_failure_still_writes_transcript(tmp_path: Path, capsys) -> None:
+    diarizer = MagicMock()
+    diarizer.run.side_effect = DiarizationError("model exploded")
+
+    ok, content, _ = _run_diarized(tmp_path, diarizer, _two_speaker_segments())
+
+    assert ok is False
+    assert "Hello there how are you" in content
+    assert "speakers:" not in content
+    assert "**Speaker" not in content
+    assert "Warning: speaker identification failed: model exploded" in capsys.readouterr().err
+
+
+def test_no_diarizer_leaves_stream_call_and_output_unchanged(tmp_path: Path) -> None:
+    ok, content, transcriber = _run_diarized(tmp_path, None, _two_speaker_segments())
+    assert ok is True
+    assert "speakers:" not in content
+    assert "**Speaker" not in content
+    _, kwargs = transcriber.stream.call_args
+    assert "word_timestamps" not in kwargs

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,9 +9,10 @@ from pathlib import Path
 import numpy as np
 
 from src.config import Config
+from src.diarize import DiarizationError, Diarizer, SpeakerTurn, assign_speakers
 from src.transcribe import Transcriber
 
-SUPPORTED_EXTENSIONS = {".wav", ".mp3"}
+SUPPORTED_EXTENSIONS = {".wav", ".mp3", ".m4a"}
 
 
 class FileInputError(Exception):
@@ -22,8 +24,9 @@ def validate_audio_file(path: Path) -> Path:
     if not path.exists():
         raise FileInputError(f"File not found: {path}")
     if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
         raise FileInputError(
-            f"Unsupported format '{path.suffix}'. Supported: .wav, .mp3"
+            f"Unsupported format '{path.suffix}'. Supported: {supported}"
         )
     return path.resolve()
 
@@ -75,27 +78,66 @@ class FileSession:
         output_dir: Path,
         *,
         output_path: Path | None = None,
+        diarizer: Diarizer | None = None,
     ) -> None:
         self._config = config
         self._transcriber = transcriber
         self._output_dir = output_dir
         self._output_path = output_path
+        self._diarizer = diarizer
 
-    def run(self, audio_path: Path) -> None:
+    def _diarize(self, samples: np.ndarray) -> tuple[list[SpeakerTurn], int | None, bool]:
+        """Run the diarizer. Returns (turns, speaker_count_for_frontmatter, failed).
+
+        Turns are emptied when one or zero speakers were found so no labels are written.
+        On failure the count is None so the frontmatter does not claim a speaker count.
+        """
+        assert self._diarizer is not None
+
+        def progress(pct: int) -> None:
+            print(f"\r  Identifying speakers… {pct}%", end="", flush=True)
+
+        print("  Identifying speakers…", end="", flush=True)
+        try:
+            turns = self._diarizer.run(samples, progress)
+        except DiarizationError as exc:
+            print()
+            print(f"Warning: speaker identification failed: {exc}", file=sys.stderr)
+            return [], None, True
+        print()
+
+        count = len({t.speaker for t in turns})
+        if count <= 1:
+            turns = []
+        return turns, count, False
+
+    def run(self, audio_path: Path) -> bool:
+        """Validate, decode, optionally diarize, transcribe, write.
+
+        Returns True on success, False if the transcript was written but diarization failed.
+        """
         from src.output import OutputWriter, SessionMeta
 
         path = validate_audio_file(audio_path)
         decoded = decode_audio_file(path)
 
+        turns: list[SpeakerTurn] = []
+        speakers: int | None = None
+        diarization_failed = False
+        if self._diarizer is not None:
+            turns, speakers, diarization_failed = self._diarize(decoded.samples)
+
         self._output_dir.mkdir(parents=True, exist_ok=True)
         tmp_path = self._output_dir / f".tmp-{datetime.now().strftime('%Y%m%d%H%M%S%f')}.md"
 
-        meta = SessionMeta(date=decoded.created_at, model=self._config.model)
+        meta = SessionMeta(date=decoded.created_at, model=self._config.model, speakers=speakers)
         writer = OutputWriter(tmp_path, meta)
         writer.open()
 
-        for seg in self._transcriber.stream(decoded.samples):
-            writer.write_segment(seg)
+        stream_kwargs = {"word_timestamps": True} if turns else {}
+        for seg in self._transcriber.stream(decoded.samples, **stream_kwargs):
+            for part in assign_speakers(seg, turns):
+                writer.write_segment(part)
             if decoded.duration_sec > 0:
                 pct = int((seg.end_sec / decoded.duration_sec) * 100)
                 print(f"\r  {pct}% transcribed…", end="", flush=True)
@@ -117,3 +159,4 @@ class FileSession:
             print(f"No speech detected in {audio_path.name}.")
 
         print(f"Saved: {final_path}")
+        return not diarization_failed

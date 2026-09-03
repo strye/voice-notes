@@ -12,6 +12,8 @@ DEFAULTS: dict[str, object] = {
     "hotkey": "ctrl+space",
     "output_dir": "~/VoiceNotes",
     "language": "en",
+    "diarize": False,
+    "num_speakers": None,
 }
 
 VALID_KEYS = frozenset(DEFAULTS)
@@ -27,6 +29,8 @@ class Config:
     hotkey: str
     output_dir: Path
     language: str
+    diarize: bool = False
+    num_speakers: int | None = None
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -72,9 +76,20 @@ def load_config(path: Path | None = None) -> Config:
     if not isinstance(language, str) or not language.strip():
         raise ConfigError("Invalid language: must be a non-empty string")
 
+    diarize = raw.get("diarize", DEFAULTS["diarize"])
+    if type(diarize) is not bool:
+        raise ConfigError("Invalid diarize: must be true or false")
+
+    num_speakers = raw.get("num_speakers", DEFAULTS["num_speakers"])
+    if num_speakers is not None:
+        if type(num_speakers) is bool or not isinstance(num_speakers, int) or num_speakers < 1:
+            raise ConfigError("Invalid num_speakers: must be a positive integer")
+
     return Config(
         model=model,  # type: ignore[arg-type]
         hotkey=hotkey,
         output_dir=output_dir,
         language=language,
+        diarize=diarize,
+        num_speakers=num_speakers,
     )

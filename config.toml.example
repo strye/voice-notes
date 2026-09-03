@@ -25,3 +25,12 @@
 #   es — Spanish
 #   de — German
 # language = "en"
+
+# Speaker diarization (file transcription only).
+# When true, `voicenotes --file` labels paragraphs with "Speaker 1", "Speaker 2", ...
+# Ignored for live capture. Downloads two small models (~44 MB total) on first use.
+# diarize = false
+
+# Expected number of speakers. Improves label accuracy when you know it.
+# Leave unset to detect the number of speakers automatically.
+# num_speakers = 2

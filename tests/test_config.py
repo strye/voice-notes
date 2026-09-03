@@ -146,3 +146,56 @@ def test_config_is_frozen(tmp_path: Path) -> None:
     cfg = load_config(path=tmp_path / "nonexistent.toml")
     with pytest.raises((AttributeError, TypeError)):
         cfg.model = "tiny"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Diarization fields (Spec 005 AC-23, AC-25, AC-27)
+# ---------------------------------------------------------------------------
+
+
+def test_diarization_defaults_when_file_absent(tmp_path: Path) -> None:
+    cfg = load_config(path=tmp_path / "nonexistent.toml")
+    assert cfg.diarize is False
+    assert cfg.num_speakers is None
+
+
+def test_diarize_true_accepted(tmp_path: Path) -> None:
+    path = write_toml(tmp_path, "diarize = true\n")
+    cfg = load_config(path=path)
+    assert cfg.diarize is True
+
+
+def test_num_speakers_positive_integer_accepted(tmp_path: Path) -> None:
+    path = write_toml(tmp_path, "num_speakers = 2\n")
+    cfg = load_config(path=path)
+    assert cfg.num_speakers == 2
+
+
+def test_num_speakers_zero_rejected(tmp_path: Path) -> None:
+    path = write_toml(tmp_path, "num_speakers = 0\n")
+    with pytest.raises(ConfigError, match="Invalid num_speakers: must be a positive integer"):
+        load_config(path=path)
+
+
+def test_num_speakers_string_rejected(tmp_path: Path) -> None:
+    path = write_toml(tmp_path, 'num_speakers = "2"\n')
+    with pytest.raises(ConfigError, match="Invalid num_speakers: must be a positive integer"):
+        load_config(path=path)
+
+
+def test_num_speakers_boolean_rejected(tmp_path: Path) -> None:
+    path = write_toml(tmp_path, "num_speakers = true\n")
+    with pytest.raises(ConfigError, match="Invalid num_speakers: must be a positive integer"):
+        load_config(path=path)
+
+
+def test_diarize_string_rejected(tmp_path: Path) -> None:
+    path = write_toml(tmp_path, 'diarize = "yes"\n')
+    with pytest.raises(ConfigError, match="Invalid diarize: must be true or false"):
+        load_config(path=path)
+
+
+def test_diarize_integer_rejected(tmp_path: Path) -> None:
+    path = write_toml(tmp_path, "diarize = 1\n")
+    with pytest.raises(ConfigError, match="Invalid diarize: must be true or false"):
+        load_config(path=path)

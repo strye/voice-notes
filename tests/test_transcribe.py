@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.transcribe import TranscriptSegment, Transcriber
+from src.transcribe import TranscriptSegment, Transcriber, Word
 
 
 # ---------------------------------------------------------------------------
@@ -174,3 +174,64 @@ def test_stream_yields_transcript_segment_instances() -> None:
     audio = np.zeros(16_000, dtype=np.float32)
     results = list(t.stream(audio))
     assert all(isinstance(r, TranscriptSegment) for r in results)
+
+
+# ---------------------------------------------------------------------------
+# stream() — word timestamps (Spec 005 AC-2, AC-8)
+# ---------------------------------------------------------------------------
+
+
+def make_word(word: str, start: float, end: float) -> SimpleNamespace:
+    return SimpleNamespace(word=word, start=start, end=end)
+
+
+def test_segment_defaults_have_no_speaker_or_words() -> None:
+    seg = TranscriptSegment(text="hi", start_sec=0.0, end_sec=1.0)
+    assert seg.speaker is None
+    assert seg.words == []
+
+
+def test_stream_defaults_to_no_word_timestamps() -> None:
+    t = make_transcriber([])
+    t._model.transcribe.return_value = (iter([]), SimpleNamespace())
+    list(t.stream(np.zeros(16_000, dtype=np.float32)))
+    _, kwargs = t._model.transcribe.call_args
+    assert kwargs.get("word_timestamps") is False
+
+
+def test_stream_forwards_word_timestamps_flag() -> None:
+    t = make_transcriber([])
+    t._model.transcribe.return_value = (iter([]), SimpleNamespace())
+    list(t.stream(np.zeros(16_000, dtype=np.float32), word_timestamps=True))
+    _, kwargs = t._model.transcribe.call_args
+    assert kwargs.get("word_timestamps") is True
+
+
+def test_stream_populates_words_when_requested() -> None:
+    seg = SimpleNamespace(
+        text=" Hello world.",
+        start=0.0,
+        end=1.2,
+        words=[make_word(" Hello", 0.0, 0.5), make_word(" world.", 0.6, 1.2)],
+    )
+    t = make_transcriber([])
+    t._model.transcribe.return_value = (iter([seg]), SimpleNamespace())
+    [result] = list(t.stream(np.zeros(16_000, dtype=np.float32), word_timestamps=True))
+    assert result.words == [Word("Hello", 0.0, 0.5), Word("world.", 0.6, 1.2)]
+    assert result.speaker is None
+
+
+def test_stream_leaves_words_empty_when_not_requested() -> None:
+    seg = SimpleNamespace(
+        text="Hello.", start=0.0, end=1.0, words=[make_word(" Hello.", 0.0, 1.0)]
+    )
+    t = make_transcriber([])
+    t._model.transcribe.return_value = (iter([seg]), SimpleNamespace())
+    [result] = list(t.stream(np.zeros(16_000, dtype=np.float32)))
+    assert result.words == []
+
+
+def test_stream_handles_missing_words_attribute() -> None:
+    t = make_transcriber([make_seg("Hello.")])
+    [result] = list(t.stream(np.zeros(16_000, dtype=np.float32), word_timestamps=True))
+    assert result.words == []

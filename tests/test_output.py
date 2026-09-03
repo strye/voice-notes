@@ -282,3 +282,144 @@ def test_finalize_preserves_transcript_body(tmp_path: Path) -> None:
     w.finalize(timedelta(seconds=10))
     content = w._path.read_text()
     assert "This is the transcript." in content
+
+
+# ---------------------------------------------------------------------------
+# Speaker labels and speakers frontmatter (Spec 005 AC-9 to AC-14)
+# ---------------------------------------------------------------------------
+
+
+def test_speaker_label_written_on_first_labelled_segment(tmp_path: Path) -> None:
+    """AC-9: Label written on first labelled segment."""
+    w = make_writer(tmp_path)
+    w.open()
+    seg = make_seg("Hello world")
+    seg.speaker = 1
+    w.write_segment(seg)
+    content = w._path.read_text()
+    assert "**Speaker 1:** Hello world\n\n" in content
+
+
+def test_speaker_label_written_on_change_omitted_on_repeat(tmp_path: Path) -> None:
+    """AC-9, AC-10: Label written when speaker changes, omitted when speaker repeats."""
+    w = make_writer(tmp_path)
+    w.open()
+    seg1 = make_seg("First utterance")
+    seg1.speaker = 1
+    seg2 = make_seg("Second utterance")
+    seg2.speaker = 1
+    seg3 = make_seg("Third utterance")
+    seg3.speaker = 2
+    w.write_segment(seg1)
+    w.write_segment(seg2)
+    w.write_segment(seg3)
+    content = w._path.read_text()
+    # Exactly two labels: one for Speaker 1, one for Speaker 2
+    assert content.count("**Speaker 1:**") == 1
+    assert content.count("**Speaker 2:**") == 1
+    # Check structure: first has label, second doesn't, third has new label
+    assert "**Speaker 1:** First utterance\n\nSecond utterance\n\n**Speaker 2:** Third utterance\n\n" in content
+
+
+def test_speakers_frontmatter_line_present_when_set(tmp_path: Path) -> None:
+    """AC-11: speakers: N line appears in frontmatter when meta.speakers is set."""
+    meta = SessionMeta(date=datetime(2026, 5, 8, 14, 30, 0), model="base", speakers=2)
+    w = OutputWriter(path=tmp_path / "out.md", meta=meta)
+    w.open()
+    content = w._path.read_text()
+    assert "speakers: 2\n" in content
+
+
+def test_speakers_frontmatter_line_absent_when_not_set(tmp_path: Path) -> None:
+    """AC-11: speakers line absent when meta.speakers is None."""
+    meta = SessionMeta(date=datetime(2026, 5, 8, 14, 30, 0), model="base")
+    w = OutputWriter(path=tmp_path / "out.md", meta=meta)
+    w.open()
+    content = w._path.read_text()
+    assert "speakers:" not in content
+
+
+def test_frontmatter_without_speakers_identical_to_current_format(tmp_path: Path) -> None:
+    """AC-8: Frontmatter byte-identical when speakers not set."""
+    meta = SessionMeta(date=datetime(2026, 5, 8, 14, 30, 0), model="base")
+    w = OutputWriter(path=tmp_path / "out.md", meta=meta)
+    w.open()
+    content = w._path.read_text()
+    expected = (
+        "---\n"
+        "aliases:\n"
+        "  - # __TITLE__\n"
+        "title: # __TITLE__\n"
+        "date: 2026-05-08T14:30:00\n"
+        "model: base\n"
+        'duration: "00:00:00" # __DURATION__\n'
+        "word_count: 0 # __WORD_COUNT__\n"
+        "---\n"
+        "\n"
+    )
+    assert content == expected
+
+
+def test_title_and_first_words_derived_from_unlabelled_text(tmp_path: Path) -> None:
+    """AC-13: Title and first_words computed from text without labels."""
+    w = make_writer(tmp_path)
+    w.open()
+    seg = make_seg("Hello beautiful world today")
+    seg.speaker = 2
+    w.write_segment(seg)
+    assert w.first_words == "HelloBeautifulWorldToday"
+    assert w._title == "Hello Beautiful World Today"
+
+
+def test_word_count_excludes_speaker_labels(tmp_path: Path) -> None:
+    """AC-14: Word count excludes speaker label prefix."""
+    w = make_writer(tmp_path)
+    w.open()
+    seg1 = make_seg("one two")
+    seg1.speaker = 1
+    seg2 = make_seg("three four")
+    seg2.speaker = 2
+    w.write_segment(seg1)
+    w.write_segment(seg2)
+    w.finalize(timedelta(seconds=5))
+    content = w._path.read_text()
+    # Should count only "one two three four" = 4 words, not the labels
+    assert "word_count: 4" in content
+
+
+def test_segment_with_none_speaker_never_gets_label(tmp_path: Path) -> None:
+    """Segments with speaker=None never get labels."""
+    w = make_writer(tmp_path)
+    w.open()
+    seg1 = make_seg("Labelled utterance")
+    seg1.speaker = 1
+    seg2 = make_seg("Unlabelled utterance")
+    seg2.speaker = None
+    seg3 = make_seg("Another labelled")
+    seg3.speaker = 2
+    w.write_segment(seg1)
+    w.write_segment(seg2)
+    w.write_segment(seg3)
+    content = w._path.read_text()
+    # Only two labels should appear
+    assert content.count("**Speaker") == 2
+    # The None-speaker segment should appear without label
+    assert "**Speaker 1:** Labelled utterance\n\nUnlabelled utterance\n\n**Speaker 2:** Another labelled\n\n" in content
+
+
+def test_speakers_frontmatter_with_one_speaker(tmp_path: Path) -> None:
+    """AC-12: speakers: 1 written when only one speaker detected."""
+    meta = SessionMeta(date=datetime(2026, 5, 8, 14, 30, 0), model="base", speakers=1)
+    w = OutputWriter(path=tmp_path / "out.md", meta=meta)
+    w.open()
+    content = w._path.read_text()
+    assert "speakers: 1\n" in content
+
+
+def test_speakers_frontmatter_with_zero_speakers(tmp_path: Path) -> None:
+    """speakers: 0 written when diarization found no speech."""
+    meta = SessionMeta(date=datetime(2026, 5, 8, 14, 30, 0), model="base", speakers=0)
+    w = OutputWriter(path=tmp_path / "out.md", meta=meta)
+    w.open()
+    content = w._path.read_text()
+    assert "speakers: 0\n" in content

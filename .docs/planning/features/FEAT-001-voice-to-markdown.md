@@ -152,7 +152,7 @@ None — standalone tool.
 ## Out of Scope
 
 - GUI or menu bar interface
-- Speaker diarization (multiple speaker identification)
+- Speaker diarization (multiple speaker identification) — now planned separately as [FEAT-002](FEAT-002-speaker-diarization.md), file mode only
 - Post-processing or LLM-based cleanup of transcripts
 - Cloud transcription fallback
 - Languages other than English (configuration hook exists but only English is validated in v1)
