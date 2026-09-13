@@ -9,7 +9,7 @@ A local-first voice-to-markdown tool built in Python. Two modes: live capture (h
 - **pynput** — global hotkey listener
 - **ffmpeg** (subprocess) — audio file decoding for file transcription mode
 - **tomllib** (3.11+) / **tomli** (backport) — config parsing
-- **pytest** — 114 tests across 6 test files
+- **pytest** — 117 tests across 6 test files
 
 ## Source layout
 
@@ -22,7 +22,7 @@ src/
   capture.py      — AudioCapture: 16kHz mono, thread-safe buffer, CaptureError
   session.py      — LiveSession: hotkey toggle, 5s polling loop, file naming
   file_input.py   — validate_audio_file(), decode_audio_file(), FileSession
-  main.py         — CLI entrypoint: --file dispatches FileSession, else LiveSession
+  main.py         — CLI entrypoint: --file dispatches FileSession, else LiveSession; --output overrides the output path
 ```
 
 ## Key design decisions
@@ -37,13 +37,24 @@ src/
 
 **sys.modules patching** — Hardware libraries not available in the system Python path are patched via `patch.dict("sys.modules", {...})` in tests. See `tests/test_hotkey_capture.py` for the pattern.
 
+## Development setup
+
+The project is installed editable into a local virtualenv, and the `voicenotes` command on PATH (`~/.local/bin/voicenotes`) is a symlink to `.venv/bin/voicenotes`. Code changes in `src/` take effect without reinstalling.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+`ffmpeg` must be on PATH for file transcription mode (`brew install ffmpeg`).
+
 ## Running tests
 
 ```bash
-python3 -m pytest
+.venv/bin/python -m pytest
 ```
 
-All 130 tests should pass. Tests do not require a microphone, ffmpeg, or internet access.
+All 117 tests should pass. Tests do not require a microphone, ffmpeg, or internet access.
 
 ## Config file
 
