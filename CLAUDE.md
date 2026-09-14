@@ -71,6 +71,10 @@ language = "en"
 
 Models download to `~/.cache/huggingface/hub/` on first use, managed automatically by `faster-whisper`.
 
+## Claude Code skill
+
+`skills/voice-notes/SKILL.md` is a portable skill that teaches Claude how to drive the CLI from other projects. It is symlinked into `~/.claude/skills/voice-notes` so it is available machine-wide. Deployment options are in `skills/voice-notes/README.md`. Update the skill when CLI flags, output format, or error messages change.
+
 ## Planning Workflows
 
 Use `/indez [mode]` for all planning and implementation phases:
