@@ -10,7 +10,7 @@ A local-first voice-to-markdown tool built in Python. Two modes: live capture (h
 - **pynput** — global hotkey listener
 - **ffmpeg** (subprocess) — audio file decoding for file transcription mode
 - **tomllib** (3.11+) / **tomli** (backport) — config parsing
-- **pytest** — 185 tests across 8 test files
+- **pytest** — 117 tests across 6 test files
 
 ## Source layout
 
@@ -22,9 +22,8 @@ src/
   hotkey.py       — HotkeyListener, _to_pynput() conversion
   capture.py      — AudioCapture: 16kHz mono, thread-safe buffer, CaptureError
   session.py      — LiveSession: hotkey toggle, 5s polling loop, file naming
-  file_input.py   — validate_audio_file(), decode_audio_file(), FileSession (optional Diarizer)
-  diarize.py      — ensure_models() downloader, Diarizer.run() → SpeakerTurn list, assign_speakers()
-  main.py         — CLI entrypoint: --file dispatches FileSession, else LiveSession
+  file_input.py   — validate_audio_file(), decode_audio_file(), FileSession
+  main.py         — CLI entrypoint: --file dispatches FileSession, else LiveSession; --output overrides the output path
 ```
 
 ## Key design decisions
@@ -41,13 +40,24 @@ src/
 
 **sys.modules patching** — Hardware libraries not available in the system Python path are patched via `patch.dict("sys.modules", {...})` in tests. See `tests/test_hotkey_capture.py` for the pattern.
 
+## Development setup
+
+The project is installed editable into a local virtualenv, and the `voicenotes` command on PATH (`~/.local/bin/voicenotes`) is a symlink to `.venv/bin/voicenotes`. Code changes in `src/` take effect without reinstalling.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+`ffmpeg` must be on PATH for file transcription mode (`brew install ffmpeg`).
+
 ## Running tests
 
 ```bash
-python3 -m pytest
+.venv/bin/python -m pytest
 ```
 
-All 185 tests should pass. Tests do not require a microphone, ffmpeg, or internet access. One diarization smoke test exercises the real `sherpa-onnx` API and is skipped unless the models are already cached in `~/.cache/voicenotes/diarization/`.
+All 117 tests should pass. Tests do not require a microphone, ffmpeg, or internet access.
 
 ## Config file
 
@@ -65,6 +75,10 @@ diarize = false         # file mode only
 ## Model cache
 
 Whisper models download to `~/.cache/huggingface/hub/` on first use, managed automatically by `faster-whisper`. Diarization models download to `~/.cache/voicenotes/diarization/` on first `--diarize` run, verified by pinned SHA-256 in `src/diarize.py`.
+
+## Claude Code skill
+
+`skills/voice-notes/SKILL.md` is a portable skill that teaches Claude how to drive the CLI from other projects. It is symlinked into `~/.claude/skills/voice-notes` so it is available machine-wide. Deployment options are in `skills/voice-notes/README.md`. Update the skill when CLI flags, output format, or error messages change.
 
 ## Planning Workflows
 
